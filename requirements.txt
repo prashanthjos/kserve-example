@@ -1,0 +1,12 @@
+kfp
+kserve
+scikit-learn
+pandas
+numpy
+mlflow
+matplotlib
+locust
+pytest
+requests
+tensorflow
+shap

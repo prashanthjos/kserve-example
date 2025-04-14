@@ -1,0 +1,112 @@
+# PIPELINE DEFINITION
+# Name: preprocess-data
+# Inputs:
+#    data_path: str
+#    output_path: str
+# Outputs:
+#    Output: dict
+components:
+  comp-preprocess-data:
+    executorLabel: exec-preprocess-data
+    inputDefinitions:
+      parameters:
+        data_path:
+          parameterType: STRING
+        output_path:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRUCT
+deploymentSpec:
+  executors:
+    exec-preprocess-data:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - preprocess_data
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'numpy' 'joblib' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef preprocess_data(data_path: str, output_path: str) -> Dict[str,\
+          \ str]:\n    \"\"\"Preprocess the data and split it into train and test\
+          \ sets.\"\"\"\n    import pandas as pd\n    import numpy as np\n    import\
+          \ os\n    from sklearn.model_selection import train_test_split\n    from\
+          \ sklearn.preprocessing import StandardScaler\n    import joblib\n\n   \
+          \ # Load data\n    print(f\"Reading data from: {data_path}\")\n    data\
+          \ = pd.read_csv(data_path)\n\n    # Separate features and target\n    X\
+          \ = data.drop('Class', axis=1)\n    y = data['Class']\n\n    # Split data\n\
+          \    X_train, X_test, y_train, y_test = train_test_split(\n        X, y,\
+          \ test_size=0.2, random_state=42, stratify=y\n    )\n\n    # Scale features\n\
+          \    scaler = StandardScaler()\n    X_train_scaled = scaler.fit_transform(X_train)\n\
+          \    X_test_scaled = scaler.transform(X_test)\n\n    # Create output directory\n\
+          \    os.makedirs(output_path, exist_ok=True)\n\n    # Define paths\n   \
+          \ x_train_path = f\"{output_path}/X_train.npy\"\n    x_test_path = f\"{output_path}/X_test.npy\"\
+          \n    y_train_path = f\"{output_path}/y_train.npy\"\n    y_test_path = f\"\
+          {output_path}/y_test.npy\"\n    scaler_path = f\"{output_path}/scaler.joblib\"\
+          \n    feature_names_path = f\"{output_path}/feature_names.json\"\n\n   \
+          \ # Save files\n    np.save(x_train_path, X_train_scaled)\n    np.save(x_test_path,\
+          \ X_test_scaled)\n    np.save(y_train_path, y_train.values)\n    np.save(y_test_path,\
+          \ y_test.values)\n    joblib.dump(scaler, scaler_path)\n\n    # Save feature\
+          \ names\n    X.columns.to_series().to_json(feature_names_path)\n\n    print(\"\
+          Here it is again.................\")\n\n    # Return paths as outputs\n\
+          \    return {\n        \"x_train_path\": x_train_path,\n        \"x_test_path\"\
+          : x_test_path, \n        \"y_train_path\": y_train_path,\n        \"y_test_path\"\
+          : y_test_path,\n        \"scaler_path\": scaler_path,\n        \"feature_names_path\"\
+          : feature_names_path\n    }\n\n"
+        image: python:3.9
+pipelineInfo:
+  name: preprocess-data
+root:
+  dag:
+    outputs:
+      parameters:
+        Output:
+          valueFromParameter:
+            outputParameterKey: Output
+            producerSubtask: preprocess-data
+    tasks:
+      preprocess-data:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-preprocess-data
+        inputs:
+          parameters:
+            data_path:
+              componentInputParameter: data_path
+            output_path:
+              componentInputParameter: output_path
+        taskInfo:
+          name: preprocess-data
+  inputDefinitions:
+    parameters:
+      data_path:
+        parameterType: STRING
+      output_path:
+        parameterType: STRING
+  outputDefinitions:
+    parameters:
+      Output:
+        parameterType: STRUCT
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.12.1

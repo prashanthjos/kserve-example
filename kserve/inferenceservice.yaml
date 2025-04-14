@@ -1,0 +1,16 @@
+apiVersion: serving.kubeflow.org/v1beta1
+kind: InferenceService
+metadata:
+  name: fraud-detection
+  namespace: kubeflow
+spec:
+  predictor:
+    sklearn:
+      storageUri: "pvc://kubeflow-artifact-storage/fraud-detection/v1"
+      resources:
+        requests:
+          cpu: "1"
+          memory: "2Gi"
+        limits:
+          cpu: "2"
+          memory: "4Gi"
