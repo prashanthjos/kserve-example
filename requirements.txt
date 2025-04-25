@@ -10,3 +10,4 @@ pytest
 requests
 tensorflow
 shap
+kfp-kubernetes

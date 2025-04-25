@@ -17,15 +17,26 @@ def train_model(
     import joblib
     import json
     import os
+    import pandas as pd
     from sklearn.ensemble import RandomForestClassifier
     
-    # Load data
-    X_train = np.load(x_train.path)
-    y_train = np.load(y_train.path)
+    print("Reading training data..", end="\n")
+
+    with open(x_train.path) as f:
+        X_train_df = pd.read_csv(f)
+
+    print("Reading target data..", end="\n")
+
+    with open(y_train.path) as f:
+        Y_train_df = pd.read_csv(f)
+    
+    print("Reading training data complete..", end="\n")
     
     # Load feature names
     with open(feature_names.path, 'r') as f:
         feature_names_list = json.load(f)
+
+    print("Started training data..", end="\n")
     
     # Train model
     model_obj = RandomForestClassifier(
@@ -34,10 +45,14 @@ def train_model(
         random_state=42,
         class_weight='balanced'
     )
-    model_obj.fit(X_train, y_train)
+    model_obj.fit(X_train_df, Y_train_df)
+
+    print("Finished training data..", end="\n")
     
     # Save model
     joblib.dump(model_obj, model.path)
+
+    print("Finished Saving Model..", end="\n")
     
     # Save model config
     model_config_dict = {

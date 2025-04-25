@@ -1,0 +1,590 @@
+# PIPELINE DEFINITION
+# Name: fraud-detection-model-pipeline
+# Description: A pipeline to train and register a fraud detection model.
+# Inputs:
+#    model_name: str [Default: 'fraud-detection']
+#    model_version: str [Default: 'v1']
+components:
+  comp-evaluate-model:
+    executorLabel: exec-evaluate-model
+    inputDefinitions:
+      artifacts:
+        feature_names:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        x_test:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        y_test:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        confusion_matrix:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        metrics_output:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        shap_values:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        Output:
+          parameterType: STRUCT
+  comp-generate-synthetic-data:
+    executorLabel: exec-generate-synthetic-data
+    outputDefinitions:
+      artifacts:
+        data_set:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-preprocess-data:
+    executorLabel: exec-preprocess-data
+    inputDefinitions:
+      artifacts:
+        data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        feature_names:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        scaler:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        x_test:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        x_train:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        y_test:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        y_train:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-register-model:
+    executorLabel: exec-register-model
+    inputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        model_name:
+          parameterType: STRING
+        model_version:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-train-model:
+    executorLabel: exec-train-model
+    inputDefinitions:
+      artifacts:
+        feature_names:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        x_train:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        y_train:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        model_config:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-evaluate-model:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - evaluate_model
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'numpy' 'scikit-learn'\
+          \ 'joblib' 'pandas' 'matplotlib' 'shap' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef evaluate_model(\n    model: Input[Model],\n    x_test: Input[Dataset],\n\
+          \    y_test: Input[Dataset],\n    feature_names: Input[Dataset],\n    metrics_output:\
+          \ Output[Metrics],\n    confusion_matrix: Output[Dataset],\n    shap_values:\
+          \ Output[Dataset]\n) -> Dict[str, float]:\n    \"\"\"Evaluate the trained\
+          \ model and generate SHAP explanations.\"\"\"\n    import numpy as np\n\
+          \    import pandas as pd\n    import joblib\n    import json\n    import\
+          \ os\n    import matplotlib.pyplot as plt\n    from sklearn.metrics import\
+          \ (\n        accuracy_score, precision_score, recall_score, f1_score,\n\
+          \        roc_auc_score, confusion_matrix as cm_func, classification_report\n\
+          \    )\n    import shap\n\n    # Read the X test data\n    with open(x_test.path)\
+          \ as f:\n        X_test_df = pd.read_csv(f)\n\n    # Read the Y test data\
+          \ - be more careful with this\n    with open(y_test.path) as f:\n      \
+          \  Y_test_df = pd.read_csv(f)\n\n    # Print debug info about the dataframes\
+          \    \n    print(f\"X_test_df shape: {X_test_df.shape}\")\n    print(f\"\
+          Y_test_df shape: {Y_test_df.shape}\")\n    print(f\"Y_test_df columns: {Y_test_df.columns.tolist()}\"\
+          )\n    print(f\"First few rows of Y_test_df:\\n{Y_test_df.head()}\")\n\n\
+          \    # Make sure Y_test_df has the same number of rows as X_test_df\n  \
+          \  if len(Y_test_df) != len(X_test_df):\n        print(f\"WARNING: Length\
+          \ mismatch between Y_test_df ({len(Y_test_df)}) and X_test_df ({len(X_test_df)})\"\
+          )\n        # If Y_test_df has an index column that matches X_test_df, we\
+          \ can try to align them\n        if 'index' in Y_test_df.columns:\n    \
+          \        print(\"Attempting to align Y_test_df with X_test_df using index\
+          \ column\")\n            # Reset index to ensure proper alignment\n    \
+          \        X_test_df = X_test_df.reset_index(drop=True)\n            Y_test_df\
+          \ = Y_test_df.reset_index(drop=True)\n        else:\n            # Use the\
+          \ first len(X_test_df) rows from Y_test_df\n            print(f\"Taking\
+          \ first {len(X_test_df)} rows from Y_test_df\")\n            Y_test_df =\
+          \ Y_test_df.iloc[:len(X_test_df)]\n\n    # Extract the target values from\
+          \ the DataFrame - make sure it's a 1D array\n    # If it's binary classification,\
+          \ there might be only one target column\n    if len(Y_test_df.columns) ==\
+          \ 1:\n        y_true = Y_test_df.iloc[:, 0].values\n    else:\n        #\
+          \ Look for the target column (often named 'target', 'label', or 'class')\n\
+          \        potential_target_cols = ['target', 'label', 'class', 'fraud', 'is_fraud']\n\
+          \        target_col = None\n        for col in potential_target_cols:\n\
+          \            if col in Y_test_df.columns:\n                target_col =\
+          \ col\n                break\n\n        if target_col is not None:\n   \
+          \         y_true = Y_test_df[target_col].values\n        else:\n       \
+          \     # If no known target column is found, use the last column\n      \
+          \      y_true = Y_test_df.iloc[:, -1].values\n\n    print(f\"Final y_true\
+          \ shape: {y_true.shape if hasattr(y_true, 'shape') else len(y_true)}\")\n\
+          \    print(f\"Sample of y_true: {y_true[:5]}\")\n\n    # Load the model\n\
+          \    model_obj = joblib.load(model.path)\n\n    # Load feature names\n \
+          \   with open(feature_names.path, 'r') as f:\n        feature_names_list\
+          \ = json.load(f)\n\n    print(\"Predicting started\")\n\n    # Make predictions\
+          \ - ensure we get a 1D array for classification\n    y_pred_raw = model_obj.predict(X_test_df)\n\
+          \n    # Check the shape of predictions and handle accordingly\n    if hasattr(y_pred_raw,\
+          \ 'shape') and len(y_pred_raw.shape) > 1 and y_pred_raw.shape[1] > 1:\n\
+          \        print(f\"Model returned multi-dimensional predictions with shape\
+          \ {y_pred_raw.shape}\")\n        # This could be one-hot encoded or probability\
+          \ predictions\n        # For classification metrics, we need class labels\
+          \ (not probabilities)\n        y_pred = np.argmax(y_pred_raw, axis=1)\n\
+          \    else:\n        y_pred = y_pred_raw\n\n    print(f\"Final y_pred shape:\
+          \ {y_pred.shape if hasattr(y_pred, 'shape') else len(y_pred)}\")\n    print(f\"\
+          Sample of y_pred: {y_pred[:5]}\")\n\n    # Get probabilities for ROC AUC\
+          \ - shape should be (n_samples, n_classes)\n    try:\n        y_prob_raw\
+          \ = model_obj.predict_proba(X_test_df)\n        print(f\"y_prob_raw shape:\
+          \ {y_prob_raw.shape}\")\n\n        # For binary classification with ROC\
+          \ AUC, we need probabilities of the positive class (usually class 1)\n \
+          \       if y_prob_raw.shape[1] == 2:  # Binary classification\n        \
+          \    # Take probability of positive class (index 1)\n            y_prob\
+          \ = y_prob_raw[:, 1]\n        else:  # Multi-class case\n            # For\
+          \ multi-class, we'll need to use OneVsRest strategy - not handling that\
+          \ here\n            y_prob = y_prob_raw\n            print(\"Multi-class\
+          \ ROC AUC not supported in this component\")\n    except Exception as e:\n\
+          \        print(f\"Error getting prediction probabilities: {e}\")\n     \
+          \   # Fall back to using the predictions themselves\n        y_prob = y_pred\n\
+          \n    print(\"Predicting finished\")\n\n    # Ensure same length for metrics\
+          \ calculation\n    min_len = min(len(y_true), len(y_pred))\n    if min_len\
+          \ < len(y_true) or min_len < len(y_pred):\n        print(f\"Truncating y_true\
+          \ and y_pred to length {min_len}\")\n        y_true = y_true[:min_len]\n\
+          \        y_pred = y_pred[:min_len]\n        if len(y_prob) > min_len:\n\
+          \            y_prob = y_prob[:min_len]\n\n    # Calculate metrics with error\
+          \ handling\n    metrics = {}\n\n    try:\n        metrics['accuracy'] =\
+          \ float(accuracy_score(y_true, y_pred))\n    except Exception as e:\n  \
+          \      print(f\"Error calculating accuracy: {e}\")\n        metrics['accuracy']\
+          \ = 0.0\n\n    try:\n        metrics['precision'] = float(precision_score(y_true,\
+          \ y_pred, average='weighted'))\n    except Exception as e:\n        print(f\"\
+          Error calculating precision: {e}\")\n        metrics['precision'] = 0.0\n\
+          \n    try:\n        metrics['recall'] = float(recall_score(y_true, y_pred,\
+          \ average='weighted'))\n    except Exception as e:\n        print(f\"Error\
+          \ calculating recall: {e}\")\n        metrics['recall'] = 0.0\n\n    try:\n\
+          \        metrics['f1'] = float(f1_score(y_true, y_pred, average='weighted'))\n\
+          \    except Exception as e:\n        print(f\"Error calculating F1: {e}\"\
+          )\n        metrics['f1'] = 0.0\n\n    # ROC-AUC calculation\n    try:\n\
+          \        if len(np.unique(y_true)) == 2:  # Binary classification\n    \
+          \        metrics['roc_auc'] = float(roc_auc_score(y_true, y_prob))\n   \
+          \     else:\n            # Multi-class AUC requires specific handling\n\
+          \            print(\"Skipping ROC AUC for multi-class case\")\n        \
+          \    metrics['roc_auc'] = 0.0\n    except Exception as e:\n        print(f\"\
+          Could not calculate ROC AUC: {e}\")\n        metrics['roc_auc'] = 0.0\n\n\
+          \    # Log metrics to the metrics_output artifact\n    for metric_name,\
+          \ metric_value in metrics.items():\n        metrics_output.log_metric(metric_name,\
+          \ metric_value)\n\n    # Generate classification report\n    try:\n    \
+          \    report = classification_report(y_true, y_pred, output_dict=True)\n\
+          \        metrics_output.log_metrics({f\"class_{k}_{metric}\": v for k, v_dict\
+          \ in report.items() \n                           if isinstance(v_dict, dict)\
+          \ for metric, v in v_dict.items()})\n    except Exception as e:\n      \
+          \  print(f\"Could not generate classification report: {e}\")\n\n    # Generate\
+          \ confusion matrix\n    try:\n        cm = cm_func(y_true, y_pred)\n   \
+          \     pd.DataFrame(cm).to_csv(confusion_matrix.path, index=False)\n    except\
+          \ Exception as e:\n        print(f\"Could not generate confusion matrix:\
+          \ {e}\")\n        # Save empty confusion matrix\n        pd.DataFrame([[0]]).to_csv(confusion_matrix.path,\
+          \ index=False)\n\n    # Generate SHAP values (for model explainability)\n\
+          \    try:\n        # Only use SHAP for certain model types that support\
+          \ it\n        if hasattr(model_obj, \"feature_importances_\") or hasattr(model_obj,\
+          \ \"coef_\"):\n            explainer = shap.TreeExplainer(model_obj)\n \
+          \           # Use a smaller sample size if the dataset is large\n      \
+          \      sample_size = min(100, X_test_df.shape[0])\n            shap_values_output\
+          \ = explainer.shap_values(X_test_df[:sample_size])\n            np.save(shap_values.path,\
+          \ shap_values_output)\n        else:\n            print(\"Model type doesn't\
+          \ support SHAP TreeExplainer, skipping SHAP values\")\n            np.save(shap_values.path,\
+          \ np.array([]))\n    except Exception as e:\n        print(f\"Could not\
+          \ generate SHAP values: {e}\")\n        # Save an empty array as a placeholder\n\
+          \        np.save(shap_values.path, np.array([]))\n\n    # Return metrics\n\
+          \    return metrics\n\n"
+        image: python:3.9
+        resources:
+          resourceCpuRequest: '1'
+          resourceMemoryRequest: 2G
+    exec-generate-synthetic-data:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - generate_synthetic_data
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'scikit-learn'\
+          \ 'pandas' 'numpy' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef generate_synthetic_data(data_set: Output[Dataset]):\n\n    from\
+          \ sklearn.datasets import make_classification\n    import pandas as pd\n\
+          \    import os\n    import numpy as np\n\n    output_path=\"data/credit_card_data.csv\"\
+          \n\n    n_samples = 100\n\n    # Create a synthetic dataset with imbalanced\
+          \ classes (fraud is rare)\n    X, y = make_classification(\n        n_samples=n_samples,\n\
+          \        n_features=30,  # Common features in credit card data\n       \
+          \ n_informative=15,\n        n_redundant=5,\n        n_classes=2,\n    \
+          \    weights=[0.97, 0.03],  # 3% fraud rate (imbalanced)\n        random_state=42\n\
+          \    )\n\n    # Create feature names similar to credit card transaction\
+          \ data\n    feature_names = []\n    # Transaction amount and time\n    feature_names.append('Amount')\n\
+          \    feature_names.append('Time')\n    # Add PCA-like features (V1-V28)\
+          \ as often seen in fraud datasets\n    for i in range(1, 29):\n        feature_names.append(f'V{i}')\n\
+          \n    # Create dataframe\n    data = pd.DataFrame(X, columns=feature_names)\n\
+          \    data['Class'] = y  # 0 for legitimate, 1 for fraud\n\n    # Ensure\
+          \ the directory exists\n    os.makedirs(os.path.dirname(output_path), exist_ok=True)\n\
+          \n    # Save to CSV\n    with open(data_set.path, 'w') as f:\n        data.to_csv(f)\n\
+          \n"
+        image: python:3.9
+    exec-preprocess-data:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - preprocess_data
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'numpy' 'joblib' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef preprocess_data(\n    data: Input[Dataset],\n    x_train: Output[Dataset],\n\
+          \    x_test: Output[Dataset], \n    y_train: Output[Dataset],\n    y_test:\
+          \ Output[Dataset],\n    scaler: Output[Artifact],\n    feature_names: Output[Dataset]\n\
+          ):\n    \"\"\"Preprocess the data and split it into train and test sets.\"\
+          \"\"\n    import pandas as pd\n    import numpy as np\n    import os\n \
+          \   from sklearn.model_selection import train_test_split\n    from sklearn.preprocessing\
+          \ import StandardScaler\n    import joblib\n    import json\n\n    # Load\
+          \ data\n    print(f\"Reading data from: {data.path}\")\n    df = pd.read_csv(data.path)\n\
+          \n    # Separate features and target\n    X = df.drop('Class', axis=1)\n\
+          \    y = df['Class']\n\n    # Split data - use different variable names\
+          \ to avoid conflict\n    X_train_df, X_test_df, y_train_df, y_test_df =\
+          \ train_test_split(\n        X, y, test_size=0.2, random_state=42, stratify=y\n\
+          \    )\n\n    # Scale features\n    scaler_obj = StandardScaler()\n    X_train_scaled\
+          \ = pd.DataFrame(scaler_obj.fit_transform(X_train_df))\n    X_test_scaled\
+          \ = pd.DataFrame(scaler_obj.transform(X_test_df))\n\n\n    with open(x_train.path,\
+          \ 'w') as f:\n        X_train_scaled.to_csv(f)\n\n    with open(x_test.path,\
+          \ 'w') as f:\n        X_test_scaled.to_csv(f)\n\n    with open(y_train.path,\
+          \ 'w') as f:\n        y_train_df.to_csv(f)\n\n    with open(y_test.path,\
+          \ 'w') as f:\n        y_test_df.to_csv(f)\n\n    # Save scaler\n    joblib.dump(scaler_obj,\
+          \ scaler.path)\n\n    # Save feature names\n    with open(feature_names.path,\
+          \ 'w') as f:\n        json.dump(X.columns.tolist(), f)\n\n"
+        image: python:3.9
+        resources:
+          resourceCpuRequest: '1'
+          resourceMemoryRequest: 2G
+    exec-register-model:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - register_model
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'kubernetes'\
+          \ 'model-registry' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef register_model(\n    model: Input[Model],\n    model_name: str,\n\
+          \    model_version: str\n) -> str:\n    \"\"\"Register the model in the\
+          \ Kubeflow Model Registry.\"\"\"\n    from model_registry import ModelRegistry\n\
+          \    import json\n\n    # Print inputs for debugging\n    print(f\"Registering\
+          \ model with path: {model.path}\")\n    print(f\"Model name: {model_name}\"\
+          )\n    print(f\"Model version: {model_version}\")\n\n    try:\n        #\
+          \ Initialize the Model Registry client\n        registry = ModelRegistry(\n\
+          \            server_address=\"http://model-registry-service.kubeflow-user-example-com.svc.cluster.local\"\
+          ,\n            port=8080,\n            author=\"Prashanth Josyula\",\n \
+          \           is_secure=False\n        )\n\n        # Register model\n   \
+          \     registered_model = registry.register_model(\n            model_name,\n\
+          \            model.path,\n            model_format_name=\"sklearn\",\n \
+          \           model_format_version=\"1\",\n            version=model_version,\
+          \ \n            description=\"Fraud detection model\",\n            metadata={\n\
+          \                \"accuracy\": 3.14,\n                \"license\": \"BSD\
+          \ 3-Clause License\",\n            }\n        )\n\n        print(f\"Successfully\
+          \ registered model: {model_name} version: {model_version}\")\n        return\
+          \ f\"{model_name}-{model_version}\"\n\n    except Exception as e:\n    \
+          \    print(f\"Error registering model: {e}\")\n        # Return a value\
+          \ even on error to satisfy the function signature\n        return f\"Error-{model_name}-{model_version}\"\
+          \n\n"
+        image: python:3.9
+        resources:
+          resourceCpuRequest: '0.5'
+          resourceMemoryRequest: 1G
+    exec-train-model:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_model
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'numpy' 'scikit-learn'\
+          \ 'joblib' 'pandas' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_model(\n    x_train: Input[Dataset],\n    y_train: Input[Dataset],\n\
+          \    feature_names: Input[Dataset],\n    model: Output[Model],\n    model_config:\
+          \ Output[Artifact]\n):\n    \"\"\"Train a fraud detection model.\"\"\"\n\
+          \    import numpy as np\n    import joblib\n    import json\n    import\
+          \ os\n    import pandas as pd\n    from sklearn.ensemble import RandomForestClassifier\n\
+          \n    print(\"Reading training data..\", end=\"\\n\")\n\n    with open(x_train.path)\
+          \ as f:\n        X_train_df = pd.read_csv(f)\n\n    print(\"Reading target\
+          \ data..\", end=\"\\n\")\n\n    with open(y_train.path) as f:\n        Y_train_df\
+          \ = pd.read_csv(f)\n\n    print(\"Reading training data complete..\", end=\"\
+          \\n\")\n\n    # Load feature names\n    with open(feature_names.path, 'r')\
+          \ as f:\n        feature_names_list = json.load(f)\n\n    print(\"Started\
+          \ training data..\", end=\"\\n\")\n\n    # Train model\n    model_obj =\
+          \ RandomForestClassifier(\n        n_estimators=100,\n        max_depth=10,\n\
+          \        random_state=42,\n        class_weight='balanced'\n    )\n    model_obj.fit(X_train_df,\
+          \ Y_train_df)\n\n    print(\"Finished training data..\", end=\"\\n\")\n\n\
+          \    # Save model\n    joblib.dump(model_obj, model.path)\n\n    print(\"\
+          Finished Saving Model..\", end=\"\\n\")\n\n    # Save model config\n   \
+          \ model_config_dict = {\n        'feature_names': feature_names_list,\n\
+          \        'model_type': 'RandomForestClassifier',\n        'threshold': 0.5,\n\
+          \        'positive_class': 1\n    }\n\n    with open(model_config.path,\
+          \ 'w') as f:\n        json.dump(model_config_dict, f)\n\n"
+        image: python:3.9
+        resources:
+          resourceCpuRequest: '2'
+          resourceMemoryRequest: 4G
+pipelineInfo:
+  description: A pipeline to train and register a fraud detection model.
+  name: fraud-detection-model-pipeline
+root:
+  dag:
+    tasks:
+      evaluate-model:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-evaluate-model
+        dependentTasks:
+        - preprocess-data
+        - train-model
+        inputs:
+          artifacts:
+            feature_names:
+              taskOutputArtifact:
+                outputArtifactKey: feature_names
+                producerTask: preprocess-data
+            model:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: train-model
+            x_test:
+              taskOutputArtifact:
+                outputArtifactKey: x_test
+                producerTask: preprocess-data
+            y_test:
+              taskOutputArtifact:
+                outputArtifactKey: y_test
+                producerTask: preprocess-data
+        taskInfo:
+          name: evaluate-model
+      generate-synthetic-data:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-generate-synthetic-data
+        taskInfo:
+          name: generate-synthetic-data
+      preprocess-data:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-preprocess-data
+        dependentTasks:
+        - generate-synthetic-data
+        inputs:
+          artifacts:
+            data:
+              taskOutputArtifact:
+                outputArtifactKey: data_set
+                producerTask: generate-synthetic-data
+        taskInfo:
+          name: preprocess-data
+      register-model:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-register-model
+        dependentTasks:
+        - evaluate-model
+        - train-model
+        inputs:
+          artifacts:
+            model:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: train-model
+          parameters:
+            model_name:
+              componentInputParameter: model_name
+            model_version:
+              componentInputParameter: model_version
+        taskInfo:
+          name: register-model
+      train-model:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-train-model
+        dependentTasks:
+        - preprocess-data
+        inputs:
+          artifacts:
+            feature_names:
+              taskOutputArtifact:
+                outputArtifactKey: feature_names
+                producerTask: preprocess-data
+            x_train:
+              taskOutputArtifact:
+                outputArtifactKey: x_train
+                producerTask: preprocess-data
+            y_train:
+              taskOutputArtifact:
+                outputArtifactKey: y_train
+                producerTask: preprocess-data
+        taskInfo:
+          name: train-model
+  inputDefinitions:
+    parameters:
+      model_name:
+        defaultValue: fraud-detection
+        isOptional: true
+        parameterType: STRING
+      model_version:
+        defaultValue: v1
+        isOptional: true
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.12.1
