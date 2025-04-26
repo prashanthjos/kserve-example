@@ -5,6 +5,14 @@
 #    model_name: str [Default: 'fraud-detection']
 #    model_version: str [Default: 'v1']
 components:
+  comp-deploy-model:
+    executorLabel: exec-deploy-model
+    inputDefinitions:
+      parameters:
+        model_name:
+          parameterType: STRING
+        model_version:
+          parameterType: STRING
   comp-evaluate-model:
     executorLabel: exec-evaluate-model
     inputDefinitions:
@@ -129,6 +137,74 @@ components:
             schemaVersion: 0.0.1
 deploymentSpec:
   executors:
+    exec-deploy-model:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - deploy_model
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'kserve' 'kubernetes'\
+          \ 'model-registry' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef deploy_model(model_name: str, model_version: str):\n\n    import\
+          \ kserve\n    from model_registry import ModelRegistry\n    from kubernetes\
+          \ import client\n\n    def convert_minio_path_to_s3_uri(minio_path):\n \
+          \       \"\"\"\n        Convert a local MinIO path to an S3 URI format for\
+          \ KServe.\n\n        Args:\n            minio_path (str): The local MinIO\
+          \ path, e.g., \n                            \"/minio/mlpipeline/v2/artifacts/fraud-detection-model-pipeline/...\"\
+          \n\n        Returns:\n            str: The S3 URI format, e.g., \n     \
+          \           \"s3://mlpipeline/v2/artifacts/fraud-detection-model-pipeline/...\"\
+          \n        \"\"\"\n        # Remove the leading '/minio/' prefix if present\n\
+          \        if minio_path.startswith('/minio/'):\n            path_without_prefix\
+          \ = minio_path[7:]  # Skip '/minio/'\n        else:\n            path_without_prefix\
+          \ = minio_path.lstrip('/')\n\n        # Create the S3 URI by adding the\
+          \ 's3://' prefix\n        s3_uri = f\"s3://{path_without_prefix}\"\n\n \
+          \       return s3_uri\n\n    registry = ModelRegistry(\n               \
+          \ server_address=\"http://model-registry-service.kubeflow-user-example-com.svc.cluster.local\"\
+          ,\n                port=8080,\n                author=\"Prashanth Josyula\"\
+          ,\n                is_secure=False\n            )\n\n    model = registry.get_registered_model(model_name)\n\
+          \    print(\"Registered Model:\", model, \"with ID\", model.id)\n\n    version\
+          \ = registry.get_model_version(model_name, model_version)\n    print(\"\
+          Model Version:\", version, \"with ID\", version.id)\n\n    artifact = registry.get_model_artifact(model_name,\
+          \ model_version)\n    print(\"Model Artifact:\", artifact, \"with ID\",\
+          \ artifact.id)\n\n    isvc = kserve.V1beta1InferenceService(\n        api_version=kserve.constants.KSERVE_GROUP\
+          \ + \"/v1beta1\",\n        kind=kserve.constants.KSERVE_KIND_INFERENCESERVICE,\n\
+          \        metadata=client.V1ObjectMeta(\n            name=\"fraud-detection-model\"\
+          ,\n            namespace=kserve.utils.get_default_target_namespace(),\n\
+          \            labels={\n                \"modelregistry/registered-model-id\"\
+          : model.id,\n                \"modelregistry/model-version-id\": version.id,\n\
+          \            },\n        ),\n        spec=kserve.V1beta1InferenceServiceSpec(\n\
+          \            predictor=kserve.V1beta1PredictorSpec(\n                service_account_name=\"\
+          s3-sa\",\n                model=kserve.V1beta1ModelSpec(\n             \
+          \       storage_uri=convert_minio_path_to_s3_uri(artifact.uri),\n      \
+          \              model_format=kserve.V1beta1ModelFormat(\n               \
+          \         name=artifact.model_format_name, version=artifact.model_format_version\n\
+          \                    ),\n                    runtime=\"kserve-sklearnserver\"\
+          ,\n                    protocol_version=\"v2\"\n                )\n    \
+          \        )\n        ),\n    )\n    ks_client = kserve.KServeClient()\n \
+          \   ks_client.create(isvc)\n\n"
+        image: python:3.9
+        resources:
+          resourceCpuRequest: '0.5'
+          resourceMemoryRequest: 1G
     exec-evaluate-model:
       container:
         args:
@@ -482,6 +558,21 @@ pipelineInfo:
 root:
   dag:
     tasks:
+      deploy-model:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-deploy-model
+        dependentTasks:
+        - register-model
+        inputs:
+          parameters:
+            model_name:
+              componentInputParameter: model_name
+            model_version:
+              componentInputParameter: model_version
+        taskInfo:
+          name: deploy-model
       evaluate-model:
         cachingOptions:
           enableCache: true

@@ -7,6 +7,7 @@ from .preprocess_component import preprocess_data
 from .generate_data import generate_synthetic_data
 from .train_component import train_model
 from .evaluate_component import evaluate_model
+from.deploy_model import deploy_model
 
 @dsl.component(
     base_image="python:3.9",
@@ -67,7 +68,7 @@ def fraud_detection_pipeline(
     model_version: str = "v1"
 ):
     
-    # Generate Data
+    # Generate Datamodel_version
     generate_data_op = generate_synthetic_data()
     
     # Preprocess data
@@ -118,3 +119,18 @@ def fraud_detection_pipeline(
     # Set resource requests
     register_op.set_cpu_request('0.5')
     register_op.set_memory_request('1G')
+
+    # Deploy model
+    deploy_op = deploy_model(
+        model_name=model_name,
+        model_version=model_version
+    )
+    deploy_op.after(register_op)  # Ensure evaluation completes first
+    
+    
+    # Set resource requests
+    deploy_op.set_cpu_request('0.5')
+    deploy_op.set_memory_request('1G')
+
+
+

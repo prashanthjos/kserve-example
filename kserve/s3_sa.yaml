@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: s3-sa
+  namespace: kubeflow-user-example-com
+secrets:
+  - name: s3-secret
