@@ -64,7 +64,7 @@ def register_model(
     description="A pipeline to train and register a fraud detection model."
 )
 def fraud_detection_pipeline(
-    model_name: str = "fraud-detection",
+    model_name: str = "fraud-detection-model",
     model_version: str = "v1"
 ):
     

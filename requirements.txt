@@ -11,3 +11,4 @@ requests
 tensorflow
 shap
 kfp-kubernetes
+minio

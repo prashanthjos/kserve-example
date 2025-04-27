@@ -2,7 +2,7 @@
 # Name: fraud-detection-model-pipeline
 # Description: A pipeline to train and register a fraud detection model.
 # Inputs:
-#    model_name: str [Default: 'fraud-detection']
+#    model_name: str [Default: 'fraud-detection-model']
 #    model_version: str [Default: 'v1']
 components:
   comp-deploy-model:
@@ -152,7 +152,8 @@ deploymentSpec:
           \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
           \  python3 -m pip install --quiet --no-warn-script-location 'kserve' 'kubernetes'\
-          \ 'model-registry' && \"$0\" \"$@\"\n"
+          \ 'model-registry' 'boto3' 'minio' 'joblib' 'scikit-learn' && \"$0\" \"\
+          $@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -166,10 +167,11 @@ deploymentSpec:
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef deploy_model(model_name: str, model_version: str):\n\n    import\
           \ kserve\n    from model_registry import ModelRegistry\n    from kubernetes\
-          \ import client\n\n    def convert_minio_path_to_s3_uri(minio_path):\n \
-          \       \"\"\"\n        Convert a local MinIO path to an S3 URI format for\
-          \ KServe.\n\n        Args:\n            minio_path (str): The local MinIO\
-          \ path, e.g., \n                            \"/minio/mlpipeline/v2/artifacts/fraud-detection-model-pipeline/...\"\
+          \ import client\n    from minio import Minio\n    import os\n    import\
+          \ tempfile\n    import joblib\n\n    def convert_minio_path_to_s3_uri(minio_path):\n\
+          \        \"\"\"\n        Convert a local MinIO path to an S3 URI format\
+          \ for KServe.\n\n        Args:\n            minio_path (str): The local\
+          \ MinIO path, e.g., \n                            \"/minio/mlpipeline/v2/artifacts/fraud-detection-model-pipeline/...\"\
           \n\n        Returns:\n            str: The S3 URI format, e.g., \n     \
           \           \"s3://mlpipeline/v2/artifacts/fraud-detection-model-pipeline/...\"\
           \n        \"\"\"\n        # Remove the leading '/minio/' prefix if present\n\
@@ -177,26 +179,73 @@ deploymentSpec:
           \ = minio_path[7:]  # Skip '/minio/'\n        else:\n            path_without_prefix\
           \ = minio_path.lstrip('/')\n\n        # Create the S3 URI by adding the\
           \ 's3://' prefix\n        s3_uri = f\"s3://{path_without_prefix}\"\n\n \
-          \       return s3_uri\n\n    registry = ModelRegistry(\n               \
-          \ server_address=\"http://model-registry-service.kubeflow-user-example-com.svc.cluster.local\"\
+          \       return s3_uri\n\n    def parse_minio_uri(uri):\n        \"\"\"\n\
+          \        Parse a MinIO URI into bucket and object path.\n\n        Args:\n\
+          \            uri (str): The MinIO URI, e.g., \n                \"/minio/mlpipeline/v2/artifacts/fraud-detection-model-pipeline/...\"\
+          \n\n        Returns:\n            tuple: (bucket_name, object_path)\n  \
+          \      \"\"\"\n        # Remove the leading '/minio/' prefix\n        if\
+          \ uri.startswith('/minio/'):\n            path = uri[7:]  # Skip '/minio/'\n\
+          \        else:\n            path = uri.lstrip('/')\n\n        # First part\
+          \ is the bucket name\n        parts = path.split('/', 1)\n        bucket\
+          \ = parts[0]\n\n        # Rest is the object path\n        obj_path = parts[1]\
+          \ if len(parts) > 1 else \"\"\n\n        return bucket, obj_path\n\n   \
+          \ registry = ModelRegistry(\n                server_address=\"http://model-registry-service.kubeflow-user-example-com.svc.cluster.local\"\
           ,\n                port=8080,\n                author=\"Prashanth Josyula\"\
           ,\n                is_secure=False\n            )\n\n    model = registry.get_registered_model(model_name)\n\
           \    print(\"Registered Model:\", model, \"with ID\", model.id)\n\n    version\
           \ = registry.get_model_version(model_name, model_version)\n    print(\"\
           Model Version:\", version, \"with ID\", version.id)\n\n    artifact = registry.get_model_artifact(model_name,\
           \ model_version)\n    print(\"Model Artifact:\", artifact, \"with ID\",\
-          \ artifact.id)\n\n    isvc = kserve.V1beta1InferenceService(\n        api_version=kserve.constants.KSERVE_GROUP\
+          \ artifact.id)\n    print(f\"Original model URI: {artifact.uri}\")\n\n \
+          \   # Connect to MinIO\n    try:\n        print(\"Connecting to MinIO...\"\
+          )\n        minio_client = Minio(\n            \"minio-service.kubeflow:9000\"\
+          ,  # Adjust if your MinIO endpoint is different\n            access_key=\"\
+          minio\",\n            secret_key=\"minio123\",\n            secure=False\
+          \  # Set to True if using HTTPS\n        )\n\n        # Parse the original\
+          \ URI to get bucket and object path\n        bucket, object_path = parse_minio_uri(artifact.uri)\n\
+          \        print(f\"Parsed bucket: {bucket}, object path: {object_path}\"\
+          )\n\n        # Download the model to a temporary file\n        temp_file\
+          \ = tempfile.NamedTemporaryFile(delete=False)\n        temp_path = temp_file.name\n\
+          \        temp_file.close()\n\n        print(f\"Downloading model from bucket:\
+          \ {bucket}, object: {object_path} to temporary file: {temp_path}\")\n  \
+          \      minio_client.fget_object(bucket, object_path, temp_path)\n\n    \
+          \    # Load the model\n        print(f\"Loading model from: {temp_path}\"\
+          )\n        model_obj = joblib.load(temp_path)\n\n        # Create the new\
+          \ object path with .joblib extension\n        # Get the directory part of\
+          \ the object path\n        if '/' in object_path:\n            # If there's\
+          \ a directory structure, preserve it\n            object_dir = os.path.dirname(object_path)\n\
+          \            new_object_path = f\"{object_dir}/model.joblib\"\n        else:\n\
+          \            # If it's just a filename, use model.joblib\n            new_object_path\
+          \ = \"model.joblib\"\n\n        # Save the model with .joblib extension\
+          \ to a temp file\n        temp_joblib_file = tempfile.NamedTemporaryFile(suffix='.joblib',\
+          \ delete=False)\n        temp_joblib_path = temp_joblib_file.name\n    \
+          \    temp_joblib_file.close()\n\n        print(f\"Saving model to temporary\
+          \ joblib file: {temp_joblib_path}\")\n        joblib.dump(model_obj, temp_joblib_path)\n\
+          \n        # Upload the .joblib file to MinIO\n        print(f\"Uploading\
+          \ to bucket: {bucket}, object: {new_object_path} from file: {temp_joblib_path}\"\
+          )\n        minio_client.fput_object(bucket, new_object_path, temp_joblib_path)\n\
+          \        print(f\"Successfully uploaded model.joblib to MinIO\")\n\n   \
+          \     # Create the S3 URI for the new .joblib file\n        joblib_uri =\
+          \ f\"s3://{bucket}/{new_object_path}\"\n        print(f\"Model.joblib S3\
+          \ URI: {joblib_uri}\")\n\n    except Exception as e:\n        print(f\"\
+          Error working with MinIO: {e}\")\n        # Continue with original URI if\
+          \ there's an error\n        joblib_uri = convert_minio_path_to_s3_uri(artifact.uri)\n\
+          \    finally:\n        # Clean up temporary files\n        if 'temp_path'\
+          \ in locals() and os.path.exists(temp_path):\n            os.unlink(temp_path)\n\
+          \        if 'temp_joblib_path' in locals() and os.path.exists(temp_joblib_path):\n\
+          \            os.unlink(temp_joblib_path)\n\n    # Use the joblib URI for\
+          \ the InferenceService if available\n    storage_uri = joblib_uri if 'joblib_uri'\
+          \ in locals() else convert_minio_path_to_s3_uri(artifact.uri)\n\n    isvc\
+          \ = kserve.V1beta1InferenceService(\n        api_version=kserve.constants.KSERVE_GROUP\
           \ + \"/v1beta1\",\n        kind=kserve.constants.KSERVE_KIND_INFERENCESERVICE,\n\
-          \        metadata=client.V1ObjectMeta(\n            name=\"fraud-detection-model\"\
-          ,\n            namespace=kserve.utils.get_default_target_namespace(),\n\
-          \            labels={\n                \"modelregistry/registered-model-id\"\
-          : model.id,\n                \"modelregistry/model-version-id\": version.id,\n\
-          \            },\n        ),\n        spec=kserve.V1beta1InferenceServiceSpec(\n\
+          \        metadata=client.V1ObjectMeta(\n            name=model_name,\n \
+          \           namespace=kserve.utils.get_default_target_namespace(),\n   \
+          \         annotations={\n                \"sidecar.istio.io/inject\": \"\
+          false\"\n            }\n        ),\n        spec=kserve.V1beta1InferenceServiceSpec(\n\
           \            predictor=kserve.V1beta1PredictorSpec(\n                service_account_name=\"\
           s3-sa\",\n                model=kserve.V1beta1ModelSpec(\n             \
-          \       storage_uri=convert_minio_path_to_s3_uri(artifact.uri),\n      \
-          \              model_format=kserve.V1beta1ModelFormat(\n               \
-          \         name=artifact.model_format_name, version=artifact.model_format_version\n\
+          \       storage_uri=storage_uri,\n                    model_format=kserve.V1beta1ModelFormat(\n\
+          \                        name=artifact.model_format_name, version=artifact.model_format_version\n\
           \                    ),\n                    runtime=\"kserve-sklearnserver\"\
           ,\n                    protocol_version=\"v2\"\n                )\n    \
           \        )\n        ),\n    )\n    ks_client = kserve.KServeClient()\n \
@@ -670,7 +719,7 @@ root:
   inputDefinitions:
     parameters:
       model_name:
-        defaultValue: fraud-detection
+        defaultValue: fraud-detection-model
         isOptional: true
         parameterType: STRING
       model_version:
