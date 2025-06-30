@@ -2,7 +2,7 @@ from kfp import dsl
 from kfp.dsl import Input, Output, Dataset, Artifact
 
 @dsl.component(
-    base_image="python:3.9",
+    base_image="python:3.11.13",
     packages_to_install=["pandas", "scikit-learn", "numpy", "joblib"]
 )
 def preprocess_data(
@@ -25,38 +25,57 @@ def preprocess_data(
     
     # Load data
     print(f"Reading data from: {data.path}")
-    df = pd.read_csv(data.path)
+    df = pd.read_csv(data.path, index_col=0)  # Properly handle index column
     
     # Separate features and target
     X = df.drop('Class', axis=1)
     y = df['Class']
+    
+    print(f"Original X shape: {X.shape}")
+    print(f"Original feature names: {X.columns.tolist()}")
     
     # Split data - use different variable names to avoid conflict
     X_train_df, X_test_df, y_train_df, y_test_df = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
     
-    # Scale features
+    # Scale features - PRESERVE COLUMN NAMES
     scaler_obj = StandardScaler()
-    X_train_scaled = pd.DataFrame(scaler_obj.fit_transform(X_train_df))
-    X_test_scaled = pd.DataFrame(scaler_obj.transform(X_test_df))
+    
+   
+    X_train_scaled = pd.DataFrame(
+        scaler_obj.fit_transform(X_train_df), 
+        columns=X_train_df.columns,  # Preserve original column names
+        index=X_train_df.index       # Preserve original index
+    )
+    
+    X_test_scaled = pd.DataFrame(
+        scaler_obj.transform(X_test_df), 
+        columns=X_test_df.columns,   # Preserve original column names
+        index=X_test_df.index        # Preserve original index
+    )
+    
+    print(f"Scaled X_train shape: {X_train_scaled.shape}")
+    print(f"Scaled X_test shape: {X_test_scaled.shape}")
+    print(f"Feature names after scaling: {X_train_scaled.columns.tolist()}")
 
-
+    # ✅ FIX: Save CSVs without index to avoid extra columns
     with open(x_train.path, 'w') as f:
-        X_train_scaled.to_csv(f)
+        X_train_scaled.to_csv(f, index=False)  # Don't save index
 
     with open(x_test.path, 'w') as f:
-        X_test_scaled.to_csv(f)
+        X_test_scaled.to_csv(f, index=False)   # Don't save index
 
     with open(y_train.path, 'w') as f:
-        y_train_df.to_csv(f)
+        y_train_df.to_csv(f, index=False)      # Don't save index
 
     with open(y_test.path, 'w') as f:
-        y_test_df.to_csv(f)
+        y_test_df.to_csv(f, index=False)       # Don't save index
     
     # Save scaler
     joblib.dump(scaler_obj, scaler.path)
     
-    # Save feature names
     with open(feature_names.path, 'w') as f:
-        json.dump(X.columns.tolist(), f)
+        json.dump(X_train_scaled.columns.tolist(), f)
+    
+    print(f"Saved {len(X_train_scaled.columns)} feature names: {X_train_scaled.columns.tolist()}")

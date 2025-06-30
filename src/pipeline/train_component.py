@@ -2,7 +2,7 @@ from kfp import dsl
 from kfp.dsl import Input, Output, Dataset, Model, Artifact
 
 @dsl.component(
-    base_image="python:3.9",
+    base_image="python:3.11.13",
     packages_to_install=["numpy", "scikit-learn", "joblib", "pandas"]
 )
 def train_model(
@@ -45,7 +45,17 @@ def train_model(
         random_state=42,
         class_weight='balanced'
     )
-    model_obj.fit(X_train_df, Y_train_df)
+    # Extract the target column properly
+    if len(Y_train_df.columns) == 1:
+        y_target = Y_train_df.iloc[:, 0]
+    else:
+        # Look for the Class column or use the last column
+        if 'Class' in Y_train_df.columns:
+            y_target = Y_train_df['Class']
+        else:
+            y_target = Y_train_df.iloc[:, -1]
+
+    model_obj.fit(X_train_df, y_target)
 
     print("Finished training data..", end="\n")
     

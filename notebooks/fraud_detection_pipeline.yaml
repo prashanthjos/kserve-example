@@ -149,7 +149,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
           \  python3 -m pip install --quiet --no-warn-script-location 'kserve' 'kubernetes'\
           \ 'model-registry' 'boto3' 'minio' 'joblib' 'scikit-learn' && \"$0\" \"\
@@ -250,8 +250,10 @@ deploymentSpec:
           ,\n                    protocol_version=\"v2\"\n                )\n    \
           \        )\n        ),\n    )\n    ks_client = kserve.KServeClient()\n \
           \   ks_client.create(isvc)\n\n"
-        image: python:3.9
+        image: python:3.11.13
         resources:
+          cpuRequest: 0.5
+          memoryRequest: 1.0
           resourceCpuRequest: '0.5'
           resourceMemoryRequest: 1G
     exec-evaluate-model:
@@ -266,7 +268,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
           \  python3 -m pip install --quiet --no-warn-script-location 'numpy' 'scikit-learn'\
           \ 'joblib' 'pandas' 'matplotlib' 'shap' && \"$0\" \"$@\"\n"
@@ -396,8 +398,10 @@ deploymentSpec:
           \ generate SHAP values: {e}\")\n        # Save an empty array as a placeholder\n\
           \        np.save(shap_values.path, np.array([]))\n\n    # Return metrics\n\
           \    return metrics\n\n"
-        image: python:3.9
+        image: python:3.11.13
         resources:
+          cpuRequest: 1.0
+          memoryRequest: 2.0
           resourceCpuRequest: '1'
           resourceMemoryRequest: 2G
     exec-generate-synthetic-data:
@@ -412,7 +416,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
           \  python3 -m pip install --quiet --no-warn-script-location 'scikit-learn'\
           \ 'pandas' 'numpy' && \"$0\" \"$@\"\n"
@@ -444,7 +448,7 @@ deploymentSpec:
           \ the directory exists\n    os.makedirs(os.path.dirname(output_path), exist_ok=True)\n\
           \n    # Save to CSV\n    with open(data_set.path, 'w') as f:\n        data.to_csv(f)\n\
           \n"
-        image: python:3.9
+        image: python:3.11.13
     exec-preprocess-data:
       container:
         args:
@@ -457,7 +461,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
           \  python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
           \ 'numpy' 'joblib' && \"$0\" \"$@\"\n"
@@ -479,22 +483,37 @@ deploymentSpec:
           \"\"\n    import pandas as pd\n    import numpy as np\n    import os\n \
           \   from sklearn.model_selection import train_test_split\n    from sklearn.preprocessing\
           \ import StandardScaler\n    import joblib\n    import json\n\n    # Load\
-          \ data\n    print(f\"Reading data from: {data.path}\")\n    df = pd.read_csv(data.path)\n\
-          \n    # Separate features and target\n    X = df.drop('Class', axis=1)\n\
-          \    y = df['Class']\n\n    # Split data - use different variable names\
-          \ to avoid conflict\n    X_train_df, X_test_df, y_train_df, y_test_df =\
-          \ train_test_split(\n        X, y, test_size=0.2, random_state=42, stratify=y\n\
-          \    )\n\n    # Scale features\n    scaler_obj = StandardScaler()\n    X_train_scaled\
-          \ = pd.DataFrame(scaler_obj.fit_transform(X_train_df))\n    X_test_scaled\
-          \ = pd.DataFrame(scaler_obj.transform(X_test_df))\n\n\n    with open(x_train.path,\
-          \ 'w') as f:\n        X_train_scaled.to_csv(f)\n\n    with open(x_test.path,\
-          \ 'w') as f:\n        X_test_scaled.to_csv(f)\n\n    with open(y_train.path,\
-          \ 'w') as f:\n        y_train_df.to_csv(f)\n\n    with open(y_test.path,\
-          \ 'w') as f:\n        y_test_df.to_csv(f)\n\n    # Save scaler\n    joblib.dump(scaler_obj,\
-          \ scaler.path)\n\n    # Save feature names\n    with open(feature_names.path,\
-          \ 'w') as f:\n        json.dump(X.columns.tolist(), f)\n\n"
-        image: python:3.9
+          \ data\n    print(f\"Reading data from: {data.path}\")\n    df = pd.read_csv(data.path,\
+          \ index_col=0)  # Properly handle index column\n\n    # Separate features\
+          \ and target\n    X = df.drop('Class', axis=1)\n    y = df['Class']\n\n\
+          \    print(f\"Original X shape: {X.shape}\")\n    print(f\"Original feature\
+          \ names: {X.columns.tolist()}\")\n\n    # Split data - use different variable\
+          \ names to avoid conflict\n    X_train_df, X_test_df, y_train_df, y_test_df\
+          \ = train_test_split(\n        X, y, test_size=0.2, random_state=42, stratify=y\n\
+          \    )\n\n    # Scale features - PRESERVE COLUMN NAMES\n    scaler_obj =\
+          \ StandardScaler()\n\n\n    X_train_scaled = pd.DataFrame(\n        scaler_obj.fit_transform(X_train_df),\
+          \ \n        columns=X_train_df.columns,  # Preserve original column names\n\
+          \        index=X_train_df.index       # Preserve original index\n    )\n\
+          \n    X_test_scaled = pd.DataFrame(\n        scaler_obj.transform(X_test_df),\
+          \ \n        columns=X_test_df.columns,   # Preserve original column names\n\
+          \        index=X_test_df.index        # Preserve original index\n    )\n\
+          \n    print(f\"Scaled X_train shape: {X_train_scaled.shape}\")\n    print(f\"\
+          Scaled X_test shape: {X_test_scaled.shape}\")\n    print(f\"Feature names\
+          \ after scaling: {X_train_scaled.columns.tolist()}\")\n\n    # \u2705 FIX:\
+          \ Save CSVs without index to avoid extra columns\n    with open(x_train.path,\
+          \ 'w') as f:\n        X_train_scaled.to_csv(f, index=False)  # Don't save\
+          \ index\n\n    with open(x_test.path, 'w') as f:\n        X_test_scaled.to_csv(f,\
+          \ index=False)   # Don't save index\n\n    with open(y_train.path, 'w')\
+          \ as f:\n        y_train_df.to_csv(f, index=False)      # Don't save index\n\
+          \n    with open(y_test.path, 'w') as f:\n        y_test_df.to_csv(f, index=False)\
+          \       # Don't save index\n\n    # Save scaler\n    joblib.dump(scaler_obj,\
+          \ scaler.path)\n\n    with open(feature_names.path, 'w') as f:\n       \
+          \ json.dump(X_train_scaled.columns.tolist(), f)\n\n    print(f\"Saved {len(X_train_scaled.columns)}\
+          \ feature names: {X_train_scaled.columns.tolist()}\")\n\n"
+        image: python:3.11.13
         resources:
+          cpuRequest: 1.0
+          memoryRequest: 2.0
           resourceCpuRequest: '1'
           resourceMemoryRequest: 2G
     exec-register-model:
@@ -509,7 +528,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
           \  python3 -m pip install --quiet --no-warn-script-location 'kubernetes'\
           \ 'model-registry' && \"$0\" \"$@\"\n"
@@ -545,8 +564,10 @@ deploymentSpec:
           \    print(f\"Error registering model: {e}\")\n        # Return a value\
           \ even on error to satisfy the function signature\n        return f\"Error-{model_name}-{model_version}\"\
           \n\n"
-        image: python:3.9
+        image: python:3.11.13
         resources:
+          cpuRequest: 0.5
+          memoryRequest: 1.0
           resourceCpuRequest: '0.5'
           resourceMemoryRequest: 1G
     exec-train-model:
@@ -561,7 +582,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.12.1'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.13.0'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
           \  python3 -m pip install --quiet --no-warn-script-location 'numpy' 'scikit-learn'\
           \ 'joblib' 'pandas' && \"$0\" \"$@\"\n"
@@ -589,16 +610,23 @@ deploymentSpec:
           \ as f:\n        feature_names_list = json.load(f)\n\n    print(\"Started\
           \ training data..\", end=\"\\n\")\n\n    # Train model\n    model_obj =\
           \ RandomForestClassifier(\n        n_estimators=100,\n        max_depth=10,\n\
-          \        random_state=42,\n        class_weight='balanced'\n    )\n    model_obj.fit(X_train_df,\
-          \ Y_train_df)\n\n    print(\"Finished training data..\", end=\"\\n\")\n\n\
-          \    # Save model\n    joblib.dump(model_obj, model.path)\n\n    print(\"\
-          Finished Saving Model..\", end=\"\\n\")\n\n    # Save model config\n   \
-          \ model_config_dict = {\n        'feature_names': feature_names_list,\n\
-          \        'model_type': 'RandomForestClassifier',\n        'threshold': 0.5,\n\
-          \        'positive_class': 1\n    }\n\n    with open(model_config.path,\
-          \ 'w') as f:\n        json.dump(model_config_dict, f)\n\n"
-        image: python:3.9
+          \        random_state=42,\n        class_weight='balanced'\n    )\n    #\
+          \ Extract the target column properly\n    if len(Y_train_df.columns) ==\
+          \ 1:\n        y_target = Y_train_df.iloc[:, 0]\n    else:\n        # Look\
+          \ for the Class column or use the last column\n        if 'Class' in Y_train_df.columns:\n\
+          \            y_target = Y_train_df['Class']\n        else:\n           \
+          \ y_target = Y_train_df.iloc[:, -1]\n\n    model_obj.fit(X_train_df, y_target)\n\
+          \n    print(\"Finished training data..\", end=\"\\n\")\n\n    # Save model\n\
+          \    joblib.dump(model_obj, model.path)\n\n    print(\"Finished Saving Model..\"\
+          , end=\"\\n\")\n\n    # Save model config\n    model_config_dict = {\n \
+          \       'feature_names': feature_names_list,\n        'model_type': 'RandomForestClassifier',\n\
+          \        'threshold': 0.5,\n        'positive_class': 1\n    }\n\n    with\
+          \ open(model_config.path, 'w') as f:\n        json.dump(model_config_dict,\
+          \ f)\n\n"
+        image: python:3.11.13
         resources:
+          cpuRequest: 2.0
+          memoryRequest: 4.0
           resourceCpuRequest: '2'
           resourceMemoryRequest: 4G
 pipelineInfo:
@@ -727,4 +755,4 @@ root:
         isOptional: true
         parameterType: STRING
 schemaVersion: 2.1.0
-sdkVersion: kfp-2.12.1
+sdkVersion: kfp-2.13.0

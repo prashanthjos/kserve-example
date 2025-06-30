@@ -3,7 +3,7 @@ from kfp.dsl import Input, Output, Dataset, Artifact, component
 
 # Generate synthetic data for credit card fraud detection
 @component(
-    base_image="python:3.9",
+    base_image="python:3.11.13",
     packages_to_install=["scikit-learn", "pandas", "numpy"]
 )
 def generate_synthetic_data(data_set: Output[Dataset]):

@@ -1,7 +1,7 @@
 from kfp import dsl
 
 @dsl.component(
-    base_image="python:3.9",
+    base_image="python:3.11.13",
     packages_to_install=["kserve", "kubernetes", "model-registry", "boto3", "minio", "joblib", "scikit-learn"]
 )
 def deploy_model(model_name: str, model_version: str):

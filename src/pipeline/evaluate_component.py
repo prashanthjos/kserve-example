@@ -3,7 +3,7 @@ from kfp.dsl import Input, Output, Dataset, Model, Artifact, Metrics
 from typing import Dict
 
 @dsl.component(
-    base_image="python:3.9",
+    base_image="python:3.11.13",
     packages_to_install=["numpy", "scikit-learn", "joblib", "pandas", "matplotlib", "shap"]
 )
 def evaluate_model(

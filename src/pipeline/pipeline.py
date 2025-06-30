@@ -10,7 +10,7 @@ from .evaluate_component import evaluate_model
 from.deploy_model import deploy_model
 
 @dsl.component(
-    base_image="python:3.9",
+    base_image="python:3.11.13",
     packages_to_install=["kubernetes", "model-registry"]
 )
 def register_model(
