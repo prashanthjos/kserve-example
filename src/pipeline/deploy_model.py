@@ -4,7 +4,13 @@ from kfp import dsl
     base_image="python:3.11.13",
     packages_to_install=["kserve", "kubernetes", "model-registry", "boto3", "minio", "joblib", "scikit-learn"]
 )
-def deploy_model(model_name: str, model_version: str):
+def deploy_model(
+    model_name: str, 
+    model_version: str,
+    scaler: dsl.Input[dsl.Artifact],
+    feature_names: dsl.Input[dsl.Dataset],
+    feature_stats: dsl.Input[dsl.Dataset]
+):
 
     import kserve
     from model_registry import ModelRegistry
@@ -106,15 +112,16 @@ def deploy_model(model_name: str, model_version: str):
         print(f"Loading model from: {temp_path}")
         model_obj = joblib.load(temp_path)
         
-        # Create the new object path with .joblib extension
-        # Get the directory part of the object path
+        # Create directory structure to separate predictor and transformer artifacts
+        # Get the base directory from the object path
         if '/' in object_path:
-            # If there's a directory structure, preserve it
-            object_dir = os.path.dirname(object_path)
-            new_object_path = f"{object_dir}/model.joblib"
+            base_dir = os.path.dirname(object_path)
         else:
-            # If it's just a filename, use model.joblib
-            new_object_path = "model.joblib"
+            base_dir = ""
+        
+        # Predictor directory - contains ONLY model.joblib (sklearn server requirement)
+        predictor_dir = f"{base_dir}/pred-model" if base_dir else "model"
+        model_object_path = f"{predictor_dir}/model.joblib"
         
         # Save the model with .joblib extension to a temp file
         temp_joblib_file = tempfile.NamedTemporaryFile(suffix='.joblib', delete=False)
@@ -124,14 +131,35 @@ def deploy_model(model_name: str, model_version: str):
         print(f"Saving model to temporary joblib file: {temp_joblib_path}")
         joblib.dump(model_obj, temp_joblib_path)
         
-        # Upload the .joblib file to MinIO
-        print(f"Uploading to bucket: {bucket}, object: {new_object_path} from file: {temp_joblib_path}")
-        minio_client.fput_object(bucket, new_object_path, temp_joblib_path)
-        print(f"Successfully uploaded model.joblib to MinIO")
+        # Upload model.joblib to predictor directory
+        print(f"Uploading model to bucket: {bucket}, object: {model_object_path}")
+        minio_client.fput_object(bucket, model_object_path, temp_joblib_path)
+        print(f"Successfully uploaded model.joblib to predictor directory")
         
-        # Create the S3 URI for the new .joblib file
-        joblib_uri = f"s3://{bucket}/{new_object_path}"
-        print(f"Model.joblib S3 URI: {joblib_uri}")
+        # Upload transformer/explainer artifacts to base directory
+        scaler_object_path = f"{base_dir}/scaler.joblib" if base_dir else "scaler.joblib"
+        print(f"Uploading scaler to bucket: {bucket}, object: {scaler_object_path}")
+        minio_client.fput_object(bucket, scaler_object_path, scaler.path)
+        print(f"Successfully uploaded scaler.joblib")
+        
+        feature_names_object_path = f"{base_dir}/feature_names.json" if base_dir else "feature_names.json"
+        print(f"Uploading feature names to bucket: {bucket}, object: {feature_names_object_path}")
+        minio_client.fput_object(bucket, feature_names_object_path, feature_names.path)
+        print(f"Successfully uploaded feature_names.json")
+        
+        feature_stats_object_path = f"{base_dir}/feature_stats.json" if base_dir else "feature_stats.json"
+        print(f"Uploading feature stats to bucket: {bucket}, object: {feature_stats_object_path}")
+        minio_client.fput_object(bucket, feature_stats_object_path, feature_stats.path)
+        print(f"Successfully uploaded feature_stats.json")
+        
+        # Return URIs for different components
+        # IMPORTANT: storageUri should point to the model FILE directly
+        predictor_uri = f"s3://{bucket}/{model_object_path}"  # Points to model.joblib file
+        transformer_uri = f"s3://{bucket}/{base_dir}" if base_dir else f"s3://{bucket}"
+        
+        joblib_uri = predictor_uri
+        print(f"Predictor S3 URI: {predictor_uri} (points to model.joblib file)")
+        print(f"Transformer/Explainer S3 URI: {transformer_uri} (contains all artifacts)")
         
     except Exception as e:
         print(f"Error working with MinIO: {e}")

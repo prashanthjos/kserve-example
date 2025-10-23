@@ -8,6 +8,19 @@ components:
   comp-deploy-model:
     executorLabel: exec-deploy-model
     inputDefinitions:
+      artifacts:
+        feature_names:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        feature_stats:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        scaler:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
       parameters:
         model_name:
           parameterType: STRING
@@ -69,6 +82,10 @@ components:
     outputDefinitions:
       artifacts:
         feature_names:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        feature_stats:
           artifactType:
             schemaTitle: system.Dataset
             schemaVersion: 0.0.1
@@ -165,10 +182,12 @@ deploymentSpec:
 
           '
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
-          \ *\n\ndef deploy_model(model_name: str, model_version: str):\n\n    import\
-          \ kserve\n    from model_registry import ModelRegistry\n    from kubernetes\
-          \ import client\n    from minio import Minio\n    import os\n    import\
-          \ tempfile\n    import joblib\n\n    def convert_minio_path_to_s3_uri(minio_path):\n\
+          \ *\n\ndef deploy_model(\n    model_name: str, \n    model_version: str,\n\
+          \    scaler: dsl.Input[dsl.Artifact],\n    feature_names: dsl.Input[dsl.Dataset],\n\
+          \    feature_stats: dsl.Input[dsl.Dataset]\n):\n\n    import kserve\n  \
+          \  from model_registry import ModelRegistry\n    from kubernetes import\
+          \ client\n    from minio import Minio\n    import os\n    import tempfile\n\
+          \    import joblib\n\n    def convert_minio_path_to_s3_uri(minio_path):\n\
           \        \"\"\"\n        Convert a local MinIO path to an S3 URI format\
           \ for KServe.\n\n        Args:\n            minio_path (str): The local\
           \ MinIO path, e.g., \n                            \"/minio/mlpipeline/v2/artifacts/fraud-detection-model-pipeline/...\"\
@@ -210,24 +229,44 @@ deploymentSpec:
           \ {bucket}, object: {object_path} to temporary file: {temp_path}\")\n  \
           \      minio_client.fget_object(bucket, object_path, temp_path)\n\n    \
           \    # Load the model\n        print(f\"Loading model from: {temp_path}\"\
-          )\n        model_obj = joblib.load(temp_path)\n\n        # Create the new\
-          \ object path with .joblib extension\n        # Get the directory part of\
-          \ the object path\n        if '/' in object_path:\n            # If there's\
-          \ a directory structure, preserve it\n            object_dir = os.path.dirname(object_path)\n\
-          \            new_object_path = f\"{object_dir}/model.joblib\"\n        else:\n\
-          \            # If it's just a filename, use model.joblib\n            new_object_path\
-          \ = \"model.joblib\"\n\n        # Save the model with .joblib extension\
-          \ to a temp file\n        temp_joblib_file = tempfile.NamedTemporaryFile(suffix='.joblib',\
+          )\n        model_obj = joblib.load(temp_path)\n\n        # Create directory\
+          \ structure to separate predictor and transformer artifacts\n        # Get\
+          \ the base directory from the object path\n        if '/' in object_path:\n\
+          \            base_dir = os.path.dirname(object_path)\n        else:\n  \
+          \          base_dir = \"\"\n\n        # Predictor directory - contains ONLY\
+          \ model.joblib (sklearn server requirement)\n        predictor_dir = f\"\
+          {base_dir}/pred-model\" if base_dir else \"model\"\n        model_object_path\
+          \ = f\"{predictor_dir}/model.joblib\"\n\n        # Save the model with .joblib\
+          \ extension to a temp file\n        temp_joblib_file = tempfile.NamedTemporaryFile(suffix='.joblib',\
           \ delete=False)\n        temp_joblib_path = temp_joblib_file.name\n    \
           \    temp_joblib_file.close()\n\n        print(f\"Saving model to temporary\
           \ joblib file: {temp_joblib_path}\")\n        joblib.dump(model_obj, temp_joblib_path)\n\
-          \n        # Upload the .joblib file to MinIO\n        print(f\"Uploading\
-          \ to bucket: {bucket}, object: {new_object_path} from file: {temp_joblib_path}\"\
-          )\n        minio_client.fput_object(bucket, new_object_path, temp_joblib_path)\n\
-          \        print(f\"Successfully uploaded model.joblib to MinIO\")\n\n   \
-          \     # Create the S3 URI for the new .joblib file\n        joblib_uri =\
-          \ f\"s3://{bucket}/{new_object_path}\"\n        print(f\"Model.joblib S3\
-          \ URI: {joblib_uri}\")\n\n    except Exception as e:\n        print(f\"\
+          \n        # Upload model.joblib to predictor directory\n        print(f\"\
+          Uploading model to bucket: {bucket}, object: {model_object_path}\")\n  \
+          \      minio_client.fput_object(bucket, model_object_path, temp_joblib_path)\n\
+          \        print(f\"Successfully uploaded model.joblib to predictor directory\"\
+          )\n\n        # Upload transformer/explainer artifacts to base directory\n\
+          \        scaler_object_path = f\"{base_dir}/scaler.joblib\" if base_dir\
+          \ else \"scaler.joblib\"\n        print(f\"Uploading scaler to bucket: {bucket},\
+          \ object: {scaler_object_path}\")\n        minio_client.fput_object(bucket,\
+          \ scaler_object_path, scaler.path)\n        print(f\"Successfully uploaded\
+          \ scaler.joblib\")\n\n        feature_names_object_path = f\"{base_dir}/feature_names.json\"\
+          \ if base_dir else \"feature_names.json\"\n        print(f\"Uploading feature\
+          \ names to bucket: {bucket}, object: {feature_names_object_path}\")\n  \
+          \      minio_client.fput_object(bucket, feature_names_object_path, feature_names.path)\n\
+          \        print(f\"Successfully uploaded feature_names.json\")\n\n      \
+          \  feature_stats_object_path = f\"{base_dir}/feature_stats.json\" if base_dir\
+          \ else \"feature_stats.json\"\n        print(f\"Uploading feature stats\
+          \ to bucket: {bucket}, object: {feature_stats_object_path}\")\n        minio_client.fput_object(bucket,\
+          \ feature_stats_object_path, feature_stats.path)\n        print(f\"Successfully\
+          \ uploaded feature_stats.json\")\n\n        # Return URIs for different\
+          \ components\n        # IMPORTANT: storageUri should point to the model\
+          \ FILE directly\n        predictor_uri = f\"s3://{bucket}/{model_object_path}\"\
+          \  # Points to model.joblib file\n        transformer_uri = f\"s3://{bucket}/{base_dir}\"\
+          \ if base_dir else f\"s3://{bucket}\"\n\n        joblib_uri = predictor_uri\n\
+          \        print(f\"Predictor S3 URI: {predictor_uri} (points to model.joblib\
+          \ file)\")\n        print(f\"Transformer/Explainer S3 URI: {transformer_uri}\
+          \ (contains all artifacts)\")\n\n    except Exception as e:\n        print(f\"\
           Error working with MinIO: {e}\")\n        # Continue with original URI if\
           \ there's an error\n        joblib_uri = convert_minio_path_to_s3_uri(artifact.uri)\n\
           \    finally:\n        # Clean up temporary files\n        if 'temp_path'\
@@ -478,20 +517,21 @@ deploymentSpec:
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef preprocess_data(\n    data: Input[Dataset],\n    x_train: Output[Dataset],\n\
           \    x_test: Output[Dataset], \n    y_train: Output[Dataset],\n    y_test:\
-          \ Output[Dataset],\n    scaler: Output[Artifact],\n    feature_names: Output[Dataset]\n\
-          ):\n    \"\"\"Preprocess the data and split it into train and test sets.\"\
-          \"\"\n    import pandas as pd\n    import numpy as np\n    import os\n \
-          \   from sklearn.model_selection import train_test_split\n    from sklearn.preprocessing\
-          \ import StandardScaler\n    import joblib\n    import json\n\n    # Load\
-          \ data\n    print(f\"Reading data from: {data.path}\")\n    df = pd.read_csv(data.path,\
-          \ index_col=0)  # Properly handle index column\n\n    # Separate features\
-          \ and target\n    X = df.drop('Class', axis=1)\n    y = df['Class']\n\n\
-          \    print(f\"Original X shape: {X.shape}\")\n    print(f\"Original feature\
-          \ names: {X.columns.tolist()}\")\n\n    # Split data - use different variable\
-          \ names to avoid conflict\n    X_train_df, X_test_df, y_train_df, y_test_df\
-          \ = train_test_split(\n        X, y, test_size=0.2, random_state=42, stratify=y\n\
-          \    )\n\n    # Scale features - PRESERVE COLUMN NAMES\n    scaler_obj =\
-          \ StandardScaler()\n\n\n    X_train_scaled = pd.DataFrame(\n        scaler_obj.fit_transform(X_train_df),\
+          \ Output[Dataset],\n    scaler: Output[Artifact],\n    feature_names: Output[Dataset],\n\
+          \    feature_stats: Output[Dataset]\n):\n    \"\"\"Preprocess the data and\
+          \ split it into train and test sets.\"\"\"\n    import pandas as pd\n  \
+          \  import numpy as np\n    import os\n    from sklearn.model_selection import\
+          \ train_test_split\n    from sklearn.preprocessing import StandardScaler\n\
+          \    import joblib\n    import json\n\n    # Load data\n    print(f\"Reading\
+          \ data from: {data.path}\")\n    df = pd.read_csv(data.path, index_col=0)\
+          \  # Properly handle index column\n\n    # Separate features and target\n\
+          \    X = df.drop('Class', axis=1)\n    y = df['Class']\n\n    print(f\"\
+          Original X shape: {X.shape}\")\n    print(f\"Original feature names: {X.columns.tolist()}\"\
+          )\n\n    # Split data - use different variable names to avoid conflict\n\
+          \    X_train_df, X_test_df, y_train_df, y_test_df = train_test_split(\n\
+          \        X, y, test_size=0.2, random_state=42, stratify=y\n    )\n\n   \
+          \ # Scale features - PRESERVE COLUMN NAMES\n    scaler_obj = StandardScaler()\n\
+          \n\n    X_train_scaled = pd.DataFrame(\n        scaler_obj.fit_transform(X_train_df),\
           \ \n        columns=X_train_df.columns,  # Preserve original column names\n\
           \        index=X_train_df.index       # Preserve original index\n    )\n\
           \n    X_test_scaled = pd.DataFrame(\n        scaler_obj.transform(X_test_df),\
@@ -509,7 +549,16 @@ deploymentSpec:
           \       # Don't save index\n\n    # Save scaler\n    joblib.dump(scaler_obj,\
           \ scaler.path)\n\n    with open(feature_names.path, 'w') as f:\n       \
           \ json.dump(X_train_scaled.columns.tolist(), f)\n\n    print(f\"Saved {len(X_train_scaled.columns)}\
-          \ feature names: {X_train_scaled.columns.tolist()}\")\n\n"
+          \ feature names: {X_train_scaled.columns.tolist()}\")\n\n    # Calculate\
+          \ and save feature statistics for transformer validation\n    feature_stats_dict\
+          \ = {}\n    for col in X_train_scaled.columns:\n        feature_stats_dict[col]\
+          \ = {\n            'mean': float(X_train_scaled[col].mean()),\n        \
+          \    'std': float(X_train_scaled[col].std()),\n            'min': float(X_train_scaled[col].min()),\n\
+          \            'max': float(X_train_scaled[col].max()),\n            'median':\
+          \ float(X_train_scaled[col].median())\n        }\n\n    with open(feature_stats.path,\
+          \ 'w') as f:\n        json.dump(feature_stats_dict, f, indent=2)\n\n   \
+          \ print(f\"Saved feature statistics for {len(feature_stats_dict)} features\"\
+          )\n\n"
         image: python:3.11.13
         resources:
           cpuRequest: 1.0
@@ -641,8 +690,22 @@ root:
         componentRef:
           name: comp-deploy-model
         dependentTasks:
+        - preprocess-data
         - register-model
         inputs:
+          artifacts:
+            feature_names:
+              taskOutputArtifact:
+                outputArtifactKey: feature_names
+                producerTask: preprocess-data
+            feature_stats:
+              taskOutputArtifact:
+                outputArtifactKey: feature_stats
+                producerTask: preprocess-data
+            scaler:
+              taskOutputArtifact:
+                outputArtifactKey: scaler
+                producerTask: preprocess-data
           parameters:
             model_name:
               componentInputParameter: model_name

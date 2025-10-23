@@ -1,0 +1,79 @@
+---
+# Basic InferenceService with Transformer and Explainer (V2 Protocol)
+#
+# IMPORTANT: Update the storage URIs before deploying!
+# After running the pipeline, get the artifact path and update:
+# 1. Predictor storageUri: s3://.../train-model/TASK_ID/model/model.joblib (direct file path)
+# 2. Transformer STORAGE_URI: s3://.../train-model/TASK_ID (directory with all artifacts)
+# 3. Explainer STORAGE_URI: s3://.../train-model/TASK_ID (same as transformer)
+#
+# Example structure:
+# s3://mlpipeline/v2/artifacts/.../train-model/{TASK_ID}/
+# ├── model/
+# │   └── model.joblib          ← Predictor storageUri points to this FILE
+# ├── scaler.joblib              ← Transformer/Explainer use parent dir
+# ├── feature_names.json
+# └── feature_stats.json
+#
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: fraud-detection-advanced
+  namespace: kubeflow-user-example-com
+  annotations:
+    serving.kserve.io/enable-prometheus-scraping: "true"
+    sidecar.istio.io/inject: "false"
+spec:
+  predictor:
+    serviceAccountName: s3-sa
+    model:
+      modelFormat:
+        name: sklearn
+        version: "1"
+      protocolVersion: v2
+      runtime: kserve-sklearnserver
+      # IMPORTANT: Point directly to the model.joblib file
+      storageUri: "s3://mlpipeline/v2/artifacts/fraud-detection-model-pipeline/d4354d28-aabc-4f1a-812b-0c98600b2c3e/train-model/3d315132-5f20-4dfa-b1a8-ac79cb714829/pred-model/model.joblib"
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "512Mi"
+        limits:
+          cpu: "1000m"
+          memory: "1Gi"
+  
+  transformer:
+    serviceAccountName: s3-sa
+    containers:
+    - name: kserve-container
+      image: prashanthchaitanya715/kubeflowbook:transformer-latest
+      imagePullPolicy: Always
+      env:
+      - name: STORAGE_URI
+        # IMPORTANT: Point to parent directory (contains scaler.joblib, feature_names.json, feature_stats.json)
+        value: "s3://mlpipeline/v2/artifacts/fraud-detection-model-pipeline/d4354d28-aabc-4f1a-812b-0c98600b2c3e/train-model/3d315132-5f20-4dfa-b1a8-ac79cb714829"
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "256Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
+  
+  explainer:
+    serviceAccountName: s3-sa
+    containers:
+    - name: kserve-container
+      image: prashanthchaitanya715/kubeflowbook:explainer-latest
+      imagePullPolicy: Always
+      env:
+      - name: STORAGE_URI
+        # IMPORTANT: Point to parent directory (same as transformer)
+        value: "s3://mlpipeline/v2/artifacts/fraud-detection-model-pipeline/d4354d28-aabc-4f1a-812b-0c98600b2c3e/train-model/3d315132-5f20-4dfa-b1a8-ac79cb714829"
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "512Mi"
+        limits:
+          cpu: "1000m"
+          memory: "1Gi"

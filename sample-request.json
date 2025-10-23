@@ -1,0 +1,32 @@
+curl  -X POST http://localhost:8080/v2/models/fraud-detection/infer \
+  -H "Host: fraud-detection.kubeflow-user-example-com.example.com" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: oauth2_proxy_kubeflow=x4PIqdPXABx-hnCLfANPbUz2VL8lSsN15aKZNluqoMqpnT939ku4gtFZ3-RRE4NsE1TKfDjz-Uv0oRYdi13TaIpd5w_tXvI0dn6jCUAWVKgI21v7IC9NTYqY54KD2Sj6quNobUiDCvYPUM8UexHy5EA2UTyHSSYr000NITv-F3Ar2TbV6FnAbK4YChycS7pbOkq_Crdxcw1L0k0G6NsyuYDBZil0RgNxAu3PPlH2ZGb1e7XC-iar-oUAjsQxr7NFc8cFI1RtlbzjanTQwQTRrHYgmjSW1NRP-tfvJFHvlwV4KJH9O25fIyToMMQlvkO5frUdMnJxyIrEkDQc-oDTLyZp233jsYIElH7tBUpVClVMVDeCk4v9x43iKeZGs_EMNxuzKcooB3G9ArOhTPnXI6SZDVtizhTrO-il8-b-EC3LoUURjFaPDAP9Gak3-ql_XYpjuW4OFOa6jl9ml-lUX1epr74GypB9YAuz1R5mbPu1sqv8XE49EmlouMRLy1eAQS0Z20uVZSWbro1Ll8cJ5ANItso2A-evujaO9lK1KDq7ICfgT_p-4QwdRrsVuReRy9ny5EruTkkz0XBvUvLSQpge_rcBN8L1a7ON2MMR-BKJSWIUxVHfYJzD-J81j_gaAp1Upu8_8SXwqlMtp4GtQys10a05JBPYRmgNFKtzAwYCo9feCCZpZl8D4y_z3P9jvyfdAFIFg_8OVfDYbEBtNOA1tP9vhnsoHT2AQqqxJSdCdpcpDzxhL6-KIDsi4xUrGdRO2Mtlc-bZlt2me6amzOJGsTyoaLmQqr6Mot_GhEAI9P181CCOnATJiJleUTuPbmdYEkZFjLPzpl4uwYgZ-xGp1bi_JXhI6-VH6Ux0eBpDa61DElbJDBnApP11wYO3WYf3KKfk5k3mihu3m3UHDHLUn6s7CvYYYZxVuZjhgW9jCC9xVFcz4u-xqs7vvUtOk5iZyvVlIFiAMTwdTo0jAWfKgVkhX_RyY-MttVMNNbgOoUTv9AYxD_cwCYhkqWsUOM3ZVOy3WNlUWkCvyF14xaK-lX9qIEThxlyg1q1rNxwfIM3ulFeQc0Kv_D67f5bphccJvOy-HL9ZBYjds3FZyqrbYCTlrtEvbooOhXB-5lJ_oCoW8Ugvb2sDcjKQqwq_ETxxTvpz2JmLBqkcrjXcOcGSsOSbpIePkz_JSWrJFRTnV8L2vDGe7OaLDLcYYmCtnhC4E45EYow5SxFST25fuVJn0Akn4oMksoMIuJXgYknzHlNJdlllM39mKKiwV0fKM9kIp1j8rIKybKfDCTOFivqbT8H83ySY2PmReDExcsnDl7tOpi2h_CCutWTGMYOBwzsf0wpCMuTHokxRmbkGP2_drsOsP731r9ao-I8DCUsQp-oUxp7C5jwcjYzaGKZ-ZUstVLqVYh-nYUcZVtReLcVx-LJsKvncm2_DNHtFqNaqjRMAlNHjEpz_uY2rRonzfuLfxPMqGwrvMDzKwkxHyV35w0kAH_Z7Q3YLDvjupPU84H3SeqII_CiiQQ68hftXZhh_am7GDUI2d0rrgwHc628muit5bj_T30-mS0AgqcEEwdFotm7zvfRxtKqPknnIazkqYKqcLeQllCzULPNYtMZr-u0DLsfO7E-MnVZ1CtkJvz8ok_0C0-H0rLJI-619h6OMU2D6aLXsn7c0CvuNZ8xj227StFiGH87PPSrkK8hb-8aSQWBg9kGlmX0Mg3Fsom8ODv4g224CobMSmtZFBIplk2ZSJwZGtFfj5_-zJm-6kZ6HktC0xuP85TM925Hrku3Zx-agrUaCakP-bwoKrNzMjur6A2dH--c0ODufS5wf_Azkn1sNahr-SIQrAeAUfTle7DHU46URrn7puA1b-9KksAoxhhXVuhaafgEbi8hJuv87embCXtPuqo8=|1759707310|8piHiT0w6L6ULLarPKrQ-uacOqVN0uZ1x6GiqbE3XgM=" \
+  -d '{
+    "inputs": [{
+      "name": "input-0",
+      "shape": [1, 30],
+      "datatype": "FP32",
+      "data": [[3.2, 2.8, 4.1, 2.5, 3.0, 2.9, 3.5, 2.7, 3.8, 4.2,
+                2.6, 3.1, 2.4, 3.7, 2.8, 3.3, 2.9, 4.0, 3.6, 2.7,
+                3.4, 2.5, 3.9, 3.2, 2.8, 3.0, 3.7, 2.6, 3.5, 2.9]]
+    }]
+  }'
+
+
+  curl -X POST http://10.244.0.87:8080/v2/models/fraud-detection/infer \
+  -H "Content-Type: application/json" \
+  -H "Cookie: oauth2_proxy_kubeflow=0i_z_q3SaMSL7Dpz9CYJf3vLnIJo0rBT74NfS1GVWQW83VtIvbPecE20IUlKy7h_QlJFAJjsfVOo3ZZJ5XWY2A1KQLWAHgx9wrn_DKGNtPQZQB9IQgHuYnlfEUp1gke4dAE79SebJcgCNrcd7ZN-xrGUQ-6zrmEPVM46FNoE0VwQtaVsHnHSQb_3xw7rSYotO1YrxMTwwTcq0pNosUtyApnBBxgAeBmF845d2mBWLZcWB3-SAJKMUhoy7VqGgq7sWS6D_pNjZ51cjSMkyLs4vdkRMPDOgAVHYd3G3SxMG4XQgRf3UFoD4pPlG1r0mgEva3FeORvTe4E61rgNLFPrlW2ZeMmctBUNkR-I_pqey8-uMi_eeM7MLYGJQFKcTa5En-S5uj5yRLFNNmLVhlJZR5oGgi3aPd_6c3gcJdbWi6w7gpFIFeFgMT65G1IeDTQ3Fs5c6AJzuLJWK-J87PHZu3B-PxdJO3tzqd6ulMOM3cITIIXPlnhpuavfpseVsLpTpq-gbd5t5CHXW1jeBTKBtBrX4dNZxu733IHxGygi8Hfs3VLQwBtrAt7HH0XtA13NhpSTZa3tntK-3lrsVTfBU8eUNZ4kQeuIbJzpPF7kTcgj2LgSu6U9kkxatQKvoX96mnHrYarPFLbFTqe5GJj3kyaGqpaHRJ2q_avwrWzeS3-TLk3lu397A2M4R-FMMu_yJYG0wLECkbG-V24scp8atcClgJYFRfxbrSXRnCtPoF8LefhFujYfyXm8Hxk1l2M1_N8oY0Jqnh2Hg2bFJ9QmHe8Vob74pjcQerBB7Y5Yywfyx_bpq6Cr0yG1BU86PQzq2qt-WDuTYN2V28iOAbS-rBN_tbgW5CNmDdBPJSc-LWHkxBqHruqSzS5rkUzUc4VC8n2vRlpavOJ_-luqvpn8Jae4-ZPUp9l3QlF4QSN1b67zM5b-_aK48HjWfZ-wkHLV_fkZ48qmE_FhPtOKixsQ0Ee8VwcxoP8zqmIYpKSfgWTX0dcbyzpZB6UmNbeYa6PRVr3DUb0kL6wTweOVcBr65va0LKp5_1pPqRx1Wpzt2mxSaFIeL11UkGhUfm_caGBpxESDrz87ENTLxkknfIhcwxw-DWk2arx5cqsypUdI-fKb9HALvdjbuJRGM40zIc1jXTHTb3s9zXAIednL5AZv_5H56ycvkYRPKCYGgn8-mQqEjGi-lBHbhjLOiLVzXCMUnT7tpGpn9KSpTgXo9kZtuotD0mfYK6Urdu-Ijp7ApgmKIHnsr36IJW5VQ03_qncRWNz7WuBs3XTuT5AtRbxfffVq0f7JsutGW0Y_CAPOF2SOUt_2UJS_Vo60zhf7OB78D4muxqt-tt8gYPpVjgsZ6noON2XYEWB3aTu1AmmzYUfPr4cI5nOD2k3A5ILiA30rft0C0QGA6urKTB-v8CmiOfOoSAOmnXABiklrD69F5ZBspX1Qn4luv6EPZ3IOf7mKA4lEUxVnE820iLNWSpbIAnKk58jtamoxKaE7bl5ADbvmZvSE1Vg7Bv8WqfTDGboAftDSgq9R_x1l--LYzpZ7NBPSdvmG42rmD6i3lN_3Z03OQXFYJY2xIr1bOkJ1k3-8p7aUhSU6YwiSZFG9xza3YJKVhs7uZ_spCaMiSWU_io1IjnjIrx15cxgTZolDFKD-NnWrD03zPRmxGpYUAoWnSon0r7ebPsZnoGIj5oNNAi2v8YMYPLSlbH_2obj6rcw6EIh5RiSdU4Pn_IXkNkUSQi4-F43Aa63HVoHQNG5g8tFfvH7gf5yLPSrGwr-2oM53e_d3Wt9d75FiKLp6wL2xvmLOWiE2q6Nqo2ypRt_oL7X4X5lKrMj2mfBbW20JrhrpabBBdc6Xezc1TFVTeIejKGBQlMJTZkV_s3GN_X6yjhGM9iLD6SMDsYKMjC65|1751266581|MJtx_QKPjeCOkbfMC9nSazI_zAN5FNnHrDzyMtCqgbM=" \
+  -d '{
+    "inputs": [{
+      "name": "input-0",
+      "shape": [1, 30],
+      "datatype": "FP32", 
+      "data": [[3.2, 2.8, 4.1, 2.5, 3.0, 2.9, 3.5, 2.7, 3.8, 4.2,
+                2.6, 3.1, 2.4, 3.7, 2.8, 3.3, 2.9, 4.0, 3.6, 2.7,
+                3.4, 2.5, 3.9, 3.2, 2.8, 3.0, 3.7, 2.6, 3.5, 2.9]]
+    }]
+  }'
+
+
+  10.244.0.48

@@ -12,7 +12,8 @@ def preprocess_data(
     y_train: Output[Dataset],
     y_test: Output[Dataset],
     scaler: Output[Artifact],
-    feature_names: Output[Dataset]
+    feature_names: Output[Dataset],
+    feature_stats: Output[Dataset]
 ):
     """Preprocess the data and split it into train and test sets."""
     import pandas as pd
@@ -79,3 +80,19 @@ def preprocess_data(
         json.dump(X_train_scaled.columns.tolist(), f)
     
     print(f"Saved {len(X_train_scaled.columns)} feature names: {X_train_scaled.columns.tolist()}")
+    
+    # Calculate and save feature statistics for transformer validation
+    feature_stats_dict = {}
+    for col in X_train_scaled.columns:
+        feature_stats_dict[col] = {
+            'mean': float(X_train_scaled[col].mean()),
+            'std': float(X_train_scaled[col].std()),
+            'min': float(X_train_scaled[col].min()),
+            'max': float(X_train_scaled[col].max()),
+            'median': float(X_train_scaled[col].median())
+        }
+    
+    with open(feature_stats.path, 'w') as f:
+        json.dump(feature_stats_dict, f, indent=2)
+    
+    print(f"Saved feature statistics for {len(feature_stats_dict)} features")

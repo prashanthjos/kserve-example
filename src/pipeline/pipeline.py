@@ -123,7 +123,10 @@ def fraud_detection_pipeline(
     # Deploy model
     deploy_op = deploy_model(
         model_name=model_name,
-        model_version=model_version
+        model_version=model_version,
+        scaler=preprocess_op.outputs["scaler"],
+        feature_names=preprocess_op.outputs["feature_names"],
+        feature_stats=preprocess_op.outputs["feature_stats"]
     )
     deploy_op.after(register_op)  # Ensure evaluation completes first
     
